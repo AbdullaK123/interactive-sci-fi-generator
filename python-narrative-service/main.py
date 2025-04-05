@@ -1,6 +1,8 @@
 # main.py
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException
+import os
+from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.security.api_key import APIKeyHeader, APIKey
 from sqlmodel import Session
 from typing import List
 from models import (
@@ -8,9 +10,22 @@ from models import (
     StorySection, StoryGenre, SectionCreate
 )
 from database import engine, get_db
-from services import story_service, story_section_service
+from services import story_service, story_section_service, agent_service
 from utils import db_operation_handler, api_operation_handler
 from fastapi.middleware.cors import CORSMiddleware
+
+# Security setup for admin endpoints
+API_KEY = os.getenv("ADMIN_API_KEY")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if not API_KEY or api_key_header != API_KEY:
+        raise HTTPException(
+            status_code=403, 
+            detail="Could not validate API Key"
+        )
+    return api_key_header
 
 app = FastAPI(title="Interactive Sci-Fi Story Generator")
 
@@ -63,12 +78,11 @@ async def add_story_section(
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
-    # Add the AI-generated continuation - note the await here
-    section = await story_section_service.add_ai_continuation(
+    # Add the AI-generated continuation using the agent system
+    section = await agent_service.generate_continuation(
         db, 
         story_id, 
-        section_data.text,
-        story_service
+        section_data.text
     )
     return section
 
@@ -84,13 +98,98 @@ async def get_story_suggestions(
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
-    # Generate suggestions
-    suggestions = await story_section_service.generate_suggestions(
+    # Generate suggestions using the agent system
+    suggestions = await agent_service.generate_suggestions(
         db, 
-        story_id,
-        story_service
+        story_id
     )
     return suggestions
+
+@app.post('/stories/{story_id}/analyze', response_model=dict)
+@api_operation_handler()
+@db_operation_handler
+async def analyze_user_input(
+    story_id: str,
+    input_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Analyze user input without generating a continuation"""
+    # Check that the story exists
+    story = await story_service.get_by_id(db, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    user_input = input_data.get("text", "")
+    if not user_input:
+        raise HTTPException(status_code=400, detail="Input text is required")
+    
+    # Analyze the input
+    analysis = await agent_service.analyze_user_input(
+        db,
+        story_id,
+        user_input
+    )
+    
+    return analysis
+
+@app.get('/admin/metrics', response_model=dict)
+@api_operation_handler()
+async def get_metrics(api_key: APIKey = Depends(get_api_key)):
+    """Get performance metrics for all operations"""
+    return {
+        "operations": get_operation_metrics(),
+        "stories": get_story_metrics()
+    }
+
+@app.get('/admin/metrics/operation/{operation_name}', response_model=dict)
+@api_operation_handler()
+async def get_operation_metrics_endpoint(
+    operation_name: str,
+    api_key: APIKey = Depends(get_api_key)
+):
+    """Get performance metrics for a specific operation"""
+    metrics = get_operation_metrics(operation_name)
+    if not metrics:
+        raise HTTPException(status_code=404, detail=f"Operation {operation_name} not found")
+    return metrics
+
+@app.get('/admin/metrics/story/{story_id}', response_model=dict)
+@api_operation_handler()
+async def get_story_metrics_endpoint(
+    story_id: str,
+    api_key: APIKey = Depends(get_api_key)
+):
+    """Get performance metrics for a specific story"""
+    metrics = get_story_metrics(story_id)
+    if not metrics:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found in metrics")
+    return metrics
+
+@app.post('/admin/metrics/reset', response_model=dict)
+@api_operation_handler()
+async def reset_metrics_endpoint(api_key: APIKey = Depends(get_api_key)):
+    """Reset all performance metrics"""
+    reset_metrics()
+    return {"status": "metrics reset successfully"}
+
+@app.post('/admin/orchestrator/reset/{story_id}', response_model=dict)
+@api_operation_handler()
+@db_operation_handler
+async def reset_orchestrator(
+    story_id: str,
+    api_key: APIKey = Depends(get_api_key),
+    db: Session = Depends(get_db)
+):
+    """Reset the agent orchestrator for a specific story"""
+    # Check that the story exists
+    story = await story_service.get_by_id(db, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    # Reset the orchestrator
+    agent_service.clear_orchestrator_cache(story_id)
+    
+    return {"status": f"Orchestrator for story {story_id} reset successfully"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

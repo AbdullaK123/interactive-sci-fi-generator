@@ -4,7 +4,7 @@ from models import StorySection
 from services.base import BaseService
 from utils import db_operation_handler
 from typing import List
-from ai import ai_service
+from services.agent_service import agent_service
 
 class StorySectionService(BaseService[StorySection]):
     def __init__(self):
@@ -25,32 +25,15 @@ class StorySectionService(BaseService[StorySection]):
         db: Session, 
         story_id: str, 
         user_input: str,
-        story_service
+        story_service = None
     ) -> StorySection:
         """Add a new AI-generated continuation to a story based on user input"""
-        # Get story context for AI
-        story_context = await story_service.get_story_context(db, story_id)
-        
-        # Generate continuation with AI
-        continuation_text = await ai_service.generate_story_continuation(
-            story_context=story_context,
-            user_input=user_input
+        # Use the agent service to generate the continuation
+        section = await agent_service.generate_continuation(
+            db,
+            story_id,
+            user_input
         )
-        
-        # Find the highest order
-        sections = await self.get_sections_by_story_id(db, story_id)
-        next_order = max([s.order for s in sections], default=0) + 1
-        
-        # Create new section
-        section = StorySection(
-            story_id=story_id,
-            text=continuation_text,
-            order=next_order
-        )
-        db.add(section)
-        db.commit()
-        db.refresh(section)
-        
         return section
     
     @db_operation_handler
@@ -58,15 +41,14 @@ class StorySectionService(BaseService[StorySection]):
         self,
         db: Session,
         story_id: str,
-        story_service
+        story_service = None
     ) -> List[str]:
         """Generate suggestions for what the user might do next"""
-        # Get story context for AI
-        story_context = await story_service.get_story_context(db, story_id)
-        
-        # Generate suggestions with AI
-        suggestions = await ai_service.generate_story_suggestions(story_context)
-        
+        # Use the agent service to generate suggestions
+        suggestions = await agent_service.generate_suggestions(
+            db,
+            story_id
+        )
         return suggestions
     
     @db_operation_handler

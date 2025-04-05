@@ -6,6 +6,8 @@ from ai.agents.memory_curator_agent import MemoryCuratorAgent
 from ai.agents.narrative_director_agent import NarrativeDirectorAgent
 from services import character_service, location_service, relationship_service, event_service, story_service
 from models import Story
+from ai.monitoring import track_agent_operation, log_token_usage
+from ai.config import get_agent_config
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from sqlmodel import Session
@@ -33,6 +35,7 @@ class AgentOrchestrator:
         self.memory_curator_agent = None
         self.narrative_director_agent = None
     
+    @track_agent_operation("orchestrator_initialize")
     async def initialize(self):
         """Initialize the orchestrator and load all required data"""
         # Load story data
@@ -79,6 +82,8 @@ class AgentOrchestrator:
                 }
             )
     
+    
+    @track_agent_operation("get_relevant_memories")
     async def _get_relevant_memories(self, current_situation: str, active_character_ids: List[str]):
         """Get relevant memories using the Memory Curator agent"""
         # Get available memories from the database (events, character changes, etc.)
@@ -114,6 +119,7 @@ class AgentOrchestrator:
         
         return memory_output
     
+    @track_agent_operation("get_character_reactions")
     async def _get_character_reactions(self, character_ids: List[str], situation: str, context: str):
         """Get reactions from specified characters"""
         character_reactions = {}
@@ -139,6 +145,7 @@ class AgentOrchestrator:
         
         return character_reactions
     
+    @track_agent_operation("check_world_consistency")
     async def _check_world_consistency(self, proposed_event: str, location_id: str = None):
         """Check world consistency using World State agent"""
         # Get location data if provided
@@ -169,6 +176,7 @@ class AgentOrchestrator:
         
         return consistency_output
     
+    @track_agent_operation("get_narrative_direction")
     async def _get_narrative_direction(self, user_input: str):
         """Get narrative direction using Narrative Director agent"""
         # Get story so far
@@ -185,6 +193,7 @@ class AgentOrchestrator:
         
         return direction_output
     
+    @track_agent_operation("generate_story_continuation")
     async def generate_story_continuation(self, user_input: str, active_characters: List[str] = None):
         """
         Generate story continuation using all agents
@@ -380,6 +389,7 @@ class AgentOrchestrator:
             # You might store this in a story metadata field or a separate table
             pass
     
+    @track_agent_operation("generate_story_suggestions")
     async def generate_story_suggestions(self) -> List[str]:
         """Generate suggestions for what the user might do next"""
         # Get the latest story section for context

@@ -1,22 +1,23 @@
 // src/app/stories/[id]/page.tsx
 'use client';
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   useGetStory, 
   useAddStorySection,
-  useGetStorySuggestions 
+  useGetStorySuggestions,
+  useGetStoryCharacters // New hook to fetch characters
 } from '@/services/api';
+import StoryDisplay from '@/components/StoryDisplay';
+import StoryInput from '@/components/StoryInput';
+import CharacterPanel from '@/components/CharacterPanel';
 
 export default function StoryPage() {
   const params = useParams();
   const storyId = params.id as string;
   const queryClient = useQueryClient();
-  
-  const [userInput, setUserInput] = useState('');
   
   // Fetch story data
   const { 
@@ -33,35 +34,38 @@ export default function StoryPage() {
     isError: isSuggestionsError
   } = useGetStorySuggestions(storyId);
   
+  // Fetch characters - new query
+  const {
+    data: characters,
+    isPending: isLoadingCharacters
+  } = useGetStoryCharacters(storyId);
+  
   // Add section mutation
   const addSectionMutation = useAddStorySection();
   
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim()) return;
+  const handleSubmit = async (text: string) => {
+    if (!text.trim()) return;
     
     addSectionMutation.mutate(
-      { storyId, text: userInput },
+      { storyId, text },
       {
         onSuccess: () => {
-          setUserInput('');
-          // Invalidate both the story and suggestions queries
+          // Invalidate queries to refresh data
           queryClient.invalidateQueries({ queryKey: ['story', storyId] });
           queryClient.invalidateQueries({ queryKey: ['suggestions', storyId] });
+          queryClient.invalidateQueries({ queryKey: ['characters', storyId] });
         },
       }
     );
   };
   
-  const selectSuggestion = (suggestion: string) => {
-    setUserInput(suggestion);
-  };
-  
   if (isLoadingStory) {
     return (
-      <div className="min-h-screen p-8 max-w-3xl mx-auto flex justify-center items-center">
-        <div className="text-center">
-          <h2 className="text-xl mb-4">Loading story...</h2>
+      <div className="min-h-screen p-8 max-w-6xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-2/3 mb-8"></div>
+          <div className="h-64 bg-gray-100 rounded mb-8"></div>
         </div>
       </div>
     );
@@ -102,88 +106,64 @@ export default function StoryPage() {
   }
   
   return (
-    <main className="min-h-screen p-8 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-2">{story.theme} in a {story.genre} world</h1>
-      <p className="text-gray-600 mb-8">{story.setting}</p>
-      
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        {story.sections.map((section) => (
-          <div key={section.id} className="mb-6 last:mb-0">
-            <p className="whitespace-pre-line">{section.text}</p>
-          </div>
-        ))}
-        {addSectionMutation.isPending && (
-          <div className="animate-pulse text-gray-500 italic mt-4">
-            Generating the next part of your story...
-          </div>
-        )}
-      </div>
-      
-      {/* AI Suggestions */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">What would you like to do next?</h2>
-        {isLoadingSuggestions ? (
-          <div className="flex items-center space-x-2 text-gray-500">
-            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Loading suggestions...</span>
-          </div>
-        ) : isSuggestionsError ? (
-          <p className="text-red-500">Failed to load suggestions</p>
-        ) : suggestions && suggestions.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((suggestion, index) => (
-              <button
-                key={index}
-                onClick={() => selectSuggestion(suggestion)}
-                className="px-4 py-2 bg-indigo-100 text-indigo-800 rounded-full hover:bg-indigo-200 transition"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p>No suggestions available</p>
-        )}
-      </div>
-      
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Continue the story</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <textarea 
-            className="w-full p-3 border rounded h-32"
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            placeholder="Type what happens next..."
-            disabled={addSectionMutation.isPending}
+    <main className="min-h-screen p-8 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Main story column */}
+        <div className="lg:col-span-3">
+          <h1 className="text-3xl font-bold mb-2">{story.theme} in a {story.genre} world</h1>
+          <p className="text-gray-600 mb-8">{story.setting}</p>
+          
+          <StoryDisplay 
+            story={story} 
+            isLoading={isLoadingStory} 
           />
           
-          <button 
-            type="submit" 
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-            disabled={addSectionMutation.isPending || !userInput.trim()}
-          >
-            {addSectionMutation.isPending ? 'Generating story...' : 'Continue Story'}
-          </button>
+          {addSectionMutation.isPending && (
+            <div className="animate-pulse text-gray-500 italic mt-4 mb-8 p-4 border border-gray-200 rounded">
+              Generating the next part of your story...
+            </div>
+          )}
+          
+          <StoryInput 
+            onSubmit={handleSubmit}
+            isLoading={addSectionMutation.isPending}
+            suggestions={suggestions || []}
+            loadingSuggestions={isLoadingSuggestions}
+          />
           
           {addSectionMutation.isError && (
             <p className="text-red-600 text-center mt-2">
               {(addSectionMutation.error as Error).message || 'Failed to add your contribution. Please try again.'}
             </p>
           )}
-        </form>
-      </div>
-      
-      <div className="mt-8 text-center">
-        <Link href="/" className="text-blue-600 hover:underline mr-4">
-          Create Another Story
-        </Link>
-        <Link href="/stories" className="text-blue-600 hover:underline">
-          View All Stories
-        </Link>
+        </div>
+        
+        {/* Sidebar */}
+        <div>
+          <CharacterPanel 
+            characters={characters || []} 
+            isLoading={isLoadingCharacters} 
+          />
+          
+          <div className="bg-white p-4 rounded-lg shadow-md">
+            <h2 className="text-lg font-semibold mb-2">Story Information</h2>
+            <div className="text-sm">
+              <p><span className="font-medium">Genre:</span> {story.genre}</p>
+              <p><span className="font-medium">Theme:</span> {story.theme}</p>
+              <p><span className="font-medium">Started:</span> {new Date(story.created_at).toLocaleDateString()}</p>
+              <p><span className="font-medium">Sections:</span> {story.sections.length}</p>
+            </div>
+            
+            <div className="mt-4 space-y-2">
+              <Link href="/stories" className="text-blue-600 hover:underline block">
+                View All Stories
+              </Link>
+              <Link href="/" className="text-blue-600 hover:underline block">
+                Create Another Story
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -10,7 +10,7 @@ from services import service_registry
 from typing import List
 from models import (
     StoryCreate, StoryRead, StoryWithSections,
-    StorySection, SectionCreate
+    StorySection, SectionCreate, CharacterRead, EventRead
 )
 from database import get_db
 from utils import db_operation_handler, api_operation_handler
@@ -56,6 +56,38 @@ async def get_story(story_id: str, db: Session = Depends(get_db)):
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     return story
+
+@app.get('/stories/{story_id}/characters', response_model=List[CharacterRead])
+@api_operation_handler()
+@db_operation_handler
+async def get_story_characters(
+    story_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all characters for a specific story"""
+    # Check that the story exists
+    story = await service_registry.get("story_service").get_by_id(db, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    characters = await service_registry.get("character_service").get_characters_by_story_id(db, story_id)
+    return characters
+
+@app.get('/stories/{story_id}/events', response_model=List[EventRead])
+@api_operation_handler()
+@db_operation_handler
+async def get_story_events(
+    story_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all events for a specific story"""
+    # Check that the story exists
+    story = await service_registry.get("story_service").get_by_id(db, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    events = await service_registry.get("event_service").get_events_by_story_id(db, story_id)
+    return events
 
 @app.post('/stories/{story_id}/sections', response_model=StorySection)
 @api_operation_handler(validation_model=SectionCreate)

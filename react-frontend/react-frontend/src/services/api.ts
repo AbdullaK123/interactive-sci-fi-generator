@@ -34,6 +34,31 @@ export interface StoryListItem {
     updated_at: string;
     sections?: StorySection[];
   }
+
+// Add to your existing interfaces
+export interface Character {
+  id: string;
+  name: string;
+  description: string;
+  traits: Record<string, any>;
+  importance: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string;
+  importance: number;
+  created_at: string;
+}
+
+// Add to StorySection interface
+export interface StorySection {
+  // existing properties
+  events?: Event[];
+}
   
 const API_URL = 'http://localhost:8000';
 
@@ -79,6 +104,26 @@ async function addStorySection(storyId: string, text: string): Promise<StorySect
     
     return response.json();
   }
+
+// Add new API function
+async function getStoryCharacters(storyId: string): Promise<Character[]> {
+  const response = await fetch(`${API_URL}/stories/${storyId}/characters`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch characters');
+  }
+  
+  return response.json();
+}
+
+// Add new query hook
+export function useGetStoryCharacters(storyId: string) {
+  return useQuery<Character[]>({
+    queryKey: ['characters', storyId],
+    queryFn: () => getStoryCharacters(storyId),
+    enabled: !!storyId,
+  });
+}
 
 export async function getStorySuggestions(storyId: string): Promise<string[]> {
     const response = await fetch(`${API_URL}/stories/${storyId}/suggestions`);

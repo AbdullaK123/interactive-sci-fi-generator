@@ -45,8 +45,8 @@ class AgentService:
         continuation_text = await orchestrator.generate_story_continuation(user_input)
         
         # Find the highest order among existing sections
-        from services.story_section import story_section_service
-        sections = await story_section_service.get_sections_by_story_id(db, story_id)
+        from services import service_registry
+        sections = await service_registry.get("story_section_service").get_sections_by_story_id(db, story_id)
         next_order = max([s.order for s in sections], default=0) + 1
         
         # Create a new section

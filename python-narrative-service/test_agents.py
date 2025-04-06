@@ -5,7 +5,6 @@ from sqlmodel import Session
 from database import engine
 from ai.agents.orchestrator import AgentOrchestrator
 from ai import ai_service
-from services import story_service
 import uuid
 
 # Configure logging
@@ -23,7 +22,8 @@ async def create_test_story(db: Session):
         "setting": "Neo-Tokyo, 2077, where mega-corporations control every aspect of life"
     }
     
-    story = await story_service.create_with_ai_introduction(db, story_data)
+    from services import service_registry
+    story = await service_registry.get("story_service").create_with_ai_introduction(db, story_data)
     logger.info(f"Created story with ID: {story.id}")
     
     return story

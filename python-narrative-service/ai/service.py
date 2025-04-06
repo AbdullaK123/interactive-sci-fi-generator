@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 import logging
 from utils import ai_operation_handler
+from ai.error_handling import agent_error_handler, story_continuation_fallback
 
 # Load environment variables
 load_dotenv()
@@ -84,6 +85,7 @@ class AIService:
         return result
     
     @ai_operation_handler
+    @agent_error_handler(fallback_factory=story_continuation_fallback)
     async def generate_story_continuation(
         self,
         story_context: Dict[str, Any],

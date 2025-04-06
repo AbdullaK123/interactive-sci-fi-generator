@@ -1,18 +1,19 @@
 # main.py
 import uvicorn
 import os
-from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Security
 from fastapi.security.api_key import APIKeyHeader, APIKey
+from ai.monitoring import get_operation_metrics, get_story_metrics, reset_metrics
 from sqlmodel import Session
+from startup import create_app
+from services import registry
 from typing import List
 from models import (
-    Story, StoryCreate, StoryRead, StoryWithSections,
-    StorySection, StoryGenre, SectionCreate
+    StoryCreate, StoryRead, StoryWithSections,
+    StorySection, SectionCreate
 )
-from database import engine, get_db
-from services import story_service, story_section_service, agent_service
+from database import get_db
 from utils import db_operation_handler, api_operation_handler
-from fastapi.middleware.cors import CORSMiddleware
 
 # Security setup for admin endpoints
 API_KEY = os.getenv("ADMIN_API_KEY")
@@ -27,16 +28,7 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
         )
     return api_key_header
 
-app = FastAPI(title="Interactive Sci-Fi Story Generator")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js dev server
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = create_app()
 
 @app.get('/health')
 def health_check():
@@ -47,20 +39,20 @@ def health_check():
 @db_operation_handler
 async def create_story(story_data: StoryCreate, db: Session = Depends(get_db)):
     # Create story with AI-generated introduction
-    story = await story_service.create_with_ai_introduction(db, story_data)
+    story = await registry.get("story_service").create_with_ai_introduction(db, story_data)
     return story
 
 @app.get('/stories', response_model=List[StoryRead])
 @api_operation_handler()
 @db_operation_handler
 async def get_stories(db: Session = Depends(get_db)):
-    return await story_service.get_all(db)
+    return await registry.get("story_service").get_all(db)
 
 @app.get('/stories/{story_id}', response_model=StoryWithSections)
 @api_operation_handler()
 @db_operation_handler
 async def get_story(story_id: str, db: Session = Depends(get_db)):
-    story = await story_service.get_story_with_sections(db, story_id)
+    story = await registry.get("story_service").get_story_with_sections(db, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     return story
@@ -74,12 +66,12 @@ async def add_story_section(
     db: Session = Depends(get_db)
 ):
     # First check that the story exists
-    story = await story_service.get_by_id(db, story_id)
+    story = await registry.get("story_service").get_by_id(db, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
     # Add the AI-generated continuation using the agent system
-    section = await agent_service.generate_continuation(
+    section = await registry.get("agent_service").generate_continuation(
         db, 
         story_id, 
         section_data.text
@@ -94,12 +86,12 @@ async def get_story_suggestions(
     db: Session = Depends(get_db)
 ):
     # Check that the story exists
-    story = await story_service.get_by_id(db, story_id)
+    story = await registry.get("story_service").get_by_id(db, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
     # Generate suggestions using the agent system
-    suggestions = await agent_service.generate_suggestions(
+    suggestions = await registry.get("agent_service").generate_suggestions(
         db, 
         story_id
     )
@@ -115,7 +107,7 @@ async def analyze_user_input(
 ):
     """Analyze user input without generating a continuation"""
     # Check that the story exists
-    story = await story_service.get_by_id(db, story_id)
+    story = await registry.get("story_service").get_by_id(db, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
@@ -124,7 +116,7 @@ async def analyze_user_input(
         raise HTTPException(status_code=400, detail="Input text is required")
     
     # Analyze the input
-    analysis = await agent_service.analyze_user_input(
+    analysis = await registry.get("agent_service").analyze_user_input(
         db,
         story_id,
         user_input
@@ -182,12 +174,12 @@ async def reset_orchestrator(
 ):
     """Reset the agent orchestrator for a specific story"""
     # Check that the story exists
-    story = await story_service.get_by_id(db, story_id)
+    story = await registry.get("story_service").get_by_id(db, story_id)
     if not story:
         raise HTTPException(status_code=404, detail="Story not found")
     
     # Reset the orchestrator
-    agent_service.clear_orchestrator_cache(story_id)
+    registry.get("agent_service").clear_orchestrator_cache(story_id)
     
     return {"status": f"Orchestrator for story {story_id} reset successfully"}
 

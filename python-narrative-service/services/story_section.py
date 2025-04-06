@@ -4,7 +4,7 @@ from models import StorySection
 from services.base import BaseService
 from utils import db_operation_handler
 from typing import List
-from services.agent_service import agent_service
+from services.agents import agent_service
 
 class StorySectionService(BaseService[StorySection]):
     def __init__(self):

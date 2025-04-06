@@ -4,7 +4,7 @@ from ai.agents.character_agent import CharacterAgent
 from ai.agents.world_state_agent import WorldStateAgent
 from ai.agents.memory_curator_agent import MemoryCuratorAgent
 from ai.agents.narrative_director_agent import NarrativeDirectorAgent
-from services import character_service, location_service, relationship_service, event_service, story_service
+from services import registry
 from models import Story
 from ai.monitoring import track_agent_operation, log_token_usage
 from ai.config import get_agent_config
@@ -39,7 +39,7 @@ class AgentOrchestrator:
     async def initialize(self):
         """Initialize the orchestrator and load all required data"""
         # Load story data
-        self.story_data = await story_service.get_story_with_sections(self.db, self.story_id)
+        self.story_data = await registry.get("story_service").get_story_with_sections(self.db, self.story_id)
         
         # Initialize narrative director agent
         self.narrative_director_agent = NarrativeDirectorAgent(
@@ -70,7 +70,7 @@ class AgentOrchestrator:
         )
         
         # Load characters and initialize character agents
-        characters = await character_service.get_characters_by_story_id(self.db, self.story_id)
+        characters = await registry.get("character_service").get_characters_by_story_id(self.db, self.story_id)
         for character in characters:
             self.character_agents[character.id] = CharacterAgent(
                 llm=self.llm,
@@ -87,11 +87,11 @@ class AgentOrchestrator:
     async def _get_relevant_memories(self, current_situation: str, active_character_ids: List[str]):
         """Get relevant memories using the Memory Curator agent"""
         # Get available memories from the database (events, character changes, etc.)
-        story_events = await event_service.get_events_by_story_id(self.db, self.story_id)
+        story_events = await registry.get("event_service").get_events_by_story_id(self.db, self.story_id)
         
         available_memories = []
         for event in story_events:
-            participants = await event_service.get_event_participants(self.db, event.id)
+            participants = await registry.get("event_service").get_event_participants(self.db, event.id)
             available_memories.append({
                 "id": event.id,
                 "time": event.created_at.isoformat(),
@@ -103,7 +103,7 @@ class AgentOrchestrator:
         # Get active characters
         active_characters = []
         for character_id in active_character_ids:
-            character = await character_service.get_by_id(self.db, character_id)
+            character = await registry.get("character_service").get_by_id(self.db, character_id)
             if character:
                 active_characters.append({
                     "id": character.id,
@@ -130,7 +130,7 @@ class AgentOrchestrator:
                 
                 # Get character history
                 character_history = []
-                character_changes = await character_service.get_character_history(self.db, character_id)
+                character_changes = await registry.get("character_service").get_character_history(self.db, character_id)
                 for change in character_changes[-10:]:  # Last 10
                     character_history.append(change["change_description"])
                 
@@ -151,7 +151,7 @@ class AgentOrchestrator:
         # Get location data if provided
         current_location = {}
         if location_id:
-            location = await location_service.get_by_id(self.db, location_id)
+            location = await registry.get("location_service").get_by_id(self.db, location_id)
             if location:
                 current_location = {
                     "name": location.name,
@@ -161,9 +161,9 @@ class AgentOrchestrator:
         
         # Get recent world changes
         world_history = []
-        locations = await location_service.get_locations_by_story_id(self.db, self.story_id)
+        locations = await registry("location_service").get_locations_by_story_id(self.db, self.story_id)
         for location in locations:
-            location_changes = await location_service.get_location_history(self.db, location.id)
+            location_changes = await registry.get("location_service").get_location_history(self.db, location.id)
             for change in location_changes[-5:]:  # Last 5 changes
                 world_history.append(change["change_description"])
         
@@ -207,7 +207,7 @@ class AgentOrchestrator:
         """
         # If no active characters specified, use all characters
         if not active_characters:
-            characters = await character_service.get_characters_by_story_id(self.db, self.story_id)
+            characters = await registry.get("character_service").get_characters_by_story_id(self.db, self.story_id)
             active_characters = [character.id for character in characters]
         
         # 1. Get narrative direction
@@ -300,7 +300,7 @@ class AgentOrchestrator:
         # Format character reactions
         character_reaction_text = ""
         for character_id, reaction in character_reactions.items():
-            character = await character_service.get_by_id(self.db, character_id)
+            character = await registry.get("character_service").get_by_id(self.db, character_id)
             if character:
                 character_reaction_text += f"\n{character.name}:\n"
                 character_reaction_text += f"- Action: {reaction.get('action', '')}\n"
@@ -350,7 +350,7 @@ class AgentOrchestrator:
         # Update character states
         for character_id, reaction in narrative_context['character_reactions'].items():
             if 'emotions' in reaction:
-                character = await character_service.get_by_id(self.db, character_id)
+                character = await registry.get("character_service").get_by_id(self.db, character_id)
                 if character:
                     # Update character traits based on reactions
                     new_traits = character.traits.copy()
@@ -370,7 +370,7 @@ class AgentOrchestrator:
                     latest_section = self.story_data.sections[-1] if self.story_data.sections else None
                     
                     if latest_section:
-                        await character_service.update_character_traits(
+                        await registry.get("character_service").update_character_traits(
                             self.db,
                             character_id,
                             latest_section.id,

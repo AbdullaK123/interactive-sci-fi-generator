@@ -1,5 +1,4 @@
 # Enhanced models.py
-
 from typing import List, Optional, Dict, Any, ForwardRef
 from sqlmodel import Field, SQLModel, Relationship, Column, JSON
 from datetime import datetime
@@ -32,6 +31,9 @@ class StoryBase(SQLModel):
     genre: str = Field(...)
     theme: str = Field(...)
     setting: Optional[str] = Field(default=None)
+
+class StoryCreate(StoryBase):
+    pass
 
 class Story(StoryBase, table=True):
     __tablename__ = "stories"
@@ -220,6 +222,12 @@ class StorySection(StorySectionBase, table=True):
     events: List[Event] = Relationship(back_populates="section")
 
 # Response models
+
+class StoryRead(StoryBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
 class SectionCreate(SQLModel):
     text: str
 
@@ -246,6 +254,10 @@ class StorySectionRead(StorySectionBase):
     id: str
     story_id: str
     created_at: datetime
+
+
+class StoryWithSections(StoryRead):
+    sections: List[StorySectionRead] = []
 
 class StoryWithFullContext(StoryBase):
     id: str

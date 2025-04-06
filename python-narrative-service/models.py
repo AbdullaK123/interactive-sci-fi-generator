@@ -226,7 +226,7 @@ class StorySection(StorySectionBase, table=True):
 class StoryRead(StoryBase):
     id: str
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime]
 
 class SectionCreate(SQLModel):
     text: str
